@@ -9,7 +9,7 @@ TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
 # soglia movimento (5% = 0.05)
-MOVE_THRESHOLD = 0.05
+MOVE_THRESHOLD = 0.02
 
 seen = {}
 
