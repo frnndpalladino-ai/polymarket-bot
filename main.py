@@ -1,51 +1,19 @@
+import os
 import requests
 import time
 
-TOKEN = "..."
-CHAT_ID = "..."
-
-seen = {}
+TOKEN = os.getenv("TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
 def send(msg):
+    print("SENDING:", msg)
     requests.post(
         f"https://api.telegram.org/bot{TOKEN}/sendMessage",
         json={"chat_id": CHAT_ID, "text": msg}
     )
 
-def get_markets():
-    return requests.get("https://gamma-api.polymarket.com/markets").json()
-
-send("🟢 BOT ATTIVO - monitoring markets")
+send("🟢 TEST DEFINITIVO - BOT ATTIVO SU RENDER")
 
 while True:
-    try:
-        markets = get_markets()
-
-        for m in markets:
-            mid = m.get("id")
-            name = m.get("question", "Unknown")
-
-            price = float(m.get("price", 0))
-
-            if mid in seen:
-                old = seen[mid]
-                change = abs(price - old)
-
-                # 🔥 whale-like move detection
-                if change > 0.10:  # 10% move
-                    send(f"""🐋 BIG MOVE DETECTED
-
-📊 Market:
-{name}
-
-📈 Move: {old} → {price}
-⚡ Change: {round(change*100,2)}%
-""")
-
-            seen[mid] = price
-
-        time.sleep(10)
-
-    except Exception as e:
-        send(f"❌ ERROR: {e}")
-        time.sleep(10)
+    send("🔄 LOOP ATTIVO")
+    time.sleep(20)
