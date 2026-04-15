@@ -1,49 +1,73 @@
 import requests
 import time
-import os
 
-TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
-CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+# =========================
+# CONFIG
+# =========================
+TOKEN = "METTI_IL_TUO_TOKEN"
+CHAT_ID = "METTI_IL_TUO_CHAT_ID"
 
 WHALE_THRESHOLD = 15000
 
 seen = set()
 
+# =========================
+# TELEGRAM
+# =========================
 def send(msg):
-    if not TOKEN or not CHAT_ID:
-        print("WARNING: TELEGRAM_TOKEN or TELEGRAM_CHAT_ID not set. Message not sent.")
-        return
+    requests.post(
+        f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+        json={"chat_id": CHAT_ID, "text": msg}
+    )
+
+# =========================
+# START TEST (IMPORTANTISSIMO)
+# =========================
+send("🟢 BOT ONLINE - Render avviato correttamente")
+
+# =========================
+# API
+# =========================
+def get_markets():
     try:
-        requests.post(
-            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            json={"chat_id": CHAT_ID, "text": msg},
-            timeout=10
-            
-        send("🟢 BOT ONLINE - Render avviato correttamente")
-        )
-    except Exception as e:
-        print(f"Telegram send error: {e}")
+        return requests.get("https://gamma-api.polymarket.com/markets").json()
+    except:
+        return []
 
 def get_trades():
-    url = "https://data-api.polymarket.com/trades"
-    return requests.get(url, timeout=15).json()
+    try:
+        return requests.get("https://data-api.polymarket.com/trades").json()
+    except:
+        return []
 
+# =========================
+# LOOP PRINCIPALE
+# =========================
 while True:
     try:
+        markets = get_markets()
         trades = get_trades()
 
-        for t in trades:
-            trade_id = t.get("transactionHash")
+        market_map = {
+            m.get("id"): m.get("question", "Unknown Market")
+            for m in markets if m.get("id")
+        }
 
-            if not trade_id or trade_id in seen:
+        for t in trades:
+            trade_id = t.get("id")
+
+            if trade_id in seen:
                 continue
             seen.add(trade_id)
 
-            size = float(t.get("size", 0))
+            size = float(t.get("amount", t.get("size", 0)))
+            market_id = t.get("market", t.get("conditionId"))
             side = t.get("side", "UNKNOWN")
-            market_name = t.get("title", "Unknown Market")
+
+            market_name = market_map.get(market_id, "Unknown Market")
 
             if size >= WHALE_THRESHOLD:
+
                 msg = f"""
 🐋 WHALE ALERT
 
@@ -55,6 +79,7 @@ while True:
 
 ⚡ Source: Polymarket flow
 """
+
                 print(msg)
                 send(msg)
 
