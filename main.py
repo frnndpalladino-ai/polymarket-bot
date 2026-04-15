@@ -2,111 +2,67 @@ import os
 import requests
 import time
 
-# =========================
-# CONFIG
-# =========================
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-MOVE_THRESHOLD = 0.02  # 2%
+VOLUME_THRESHOLD = 10000  # soldi entrati (modifica dopo test)
 
-seen = {}
+seen_volume = {}
 
-# =========================
-# TELEGRAM
-# =========================
 def send(msg):
     try:
         print("SEND:", msg)
         requests.post(
             f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            json={"chat_id": CHAT_ID, "text": msg},
-            timeout=10
+            json={"chat_id": CHAT_ID, "text": msg}
         )
     except Exception as e:
         print("Telegram error:", e)
 
-# =========================
-# START TEST
-# =========================
-send("🟢 BOT ONLINE - AVVIATO CORRETTAMENTE")
-
-# =========================
-# PRICE EXTRACTOR (FIX CHIAVE)
-# =========================
-def extract_price(m):
-    try:
-        if m.get("lastTradePrice"):
-            return float(m["lastTradePrice"])
-
-        if m.get("price"):
-            return float(m["price"])
-
-        if "outcomePrices" in m and m["outcomePrices"]:
-            prices = m["outcomePrices"]
-            if isinstance(prices, list):
-                return float(prices[0])
-
-    except:
-        pass
-
-    return 0
-
-# =========================
-# API
-# =========================
 def get_markets():
     try:
-        r = requests.get(
-            "https://gamma-api.polymarket.com/markets",
-            timeout=10
-        )
-        return r.json()
-    except Exception as e:
-        print("API error:", e)
+        return requests.get("https://gamma-api.polymarket.com/markets").json()
+    except:
         return []
 
-# =========================
-# LOOP PRINCIPALE
-# =========================
+send("🟢 BOT WHALE VOLUME ATTIVO")
+
 while True:
     try:
         markets = get_markets()
-
-        print(f"Markets received: {len(markets)}")
 
         for m in markets:
             mid = m.get("id")
             name = m.get("question", "Unknown")
 
-            price = extract_price(m)
+            volume = m.get("volume24hr") or 0
 
-            # debug utile nei log
-            print(mid, name[:40], price)
-
-            if price == 0 or mid is None:
+            try:
+                volume = float(volume)
+            except:
                 continue
 
-            if mid not in seen:
-                seen[mid] = price
+            if mid not in seen_volume:
+                seen_volume[mid] = volume
                 continue
 
-            old_price = seen[mid]
-            change = abs(price - old_price)
+            old_volume = seen_volume[mid]
+            delta = volume - old_volume
 
-            if change >= MOVE_THRESHOLD:
-                send(f"""🐋 MARKET MOVE
+            # 🐋 QUI RILEVIAMO I SOLDI VERI
+            if delta >= VOLUME_THRESHOLD:
+                send(f"""🐋 WHALE MONEY DETECTED
 
 📊 {name}
 
-📈 {old_price} → {price}
-⚡ Change: {round(change * 100, 2)}%
+💰 New money: +${round(delta,2)}
+📈 24h Volume: ${round(volume,2)}
 """)
 
-            seen[mid] = price
+            seen_volume[mid] = volume
 
-        time.sleep(10)
+        time.sleep(15)
 
     except Exception as e:
-        send(f"❌ LOOP ERROR: {e}")
+        send(f"❌ ERROR: {e}")
         time.sleep(10)
