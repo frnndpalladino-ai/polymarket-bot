@@ -5,7 +5,7 @@ import time
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-VOLUME_THRESHOLD = 10000  # soldi entrati (modifica dopo test)
+VOLUME_THRESHOLD = 1000  # soldi entrati (modifica dopo test)
 
 seen_volume = {}
 
