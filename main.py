@@ -18,6 +18,8 @@ def send(msg):
             f"https://api.telegram.org/bot{TOKEN}/sendMessage",
             json={"chat_id": CHAT_ID, "text": msg},
             timeout=10
+            
+        send("🟢 BOT ONLINE - Render avviato correttamente")
         )
     except Exception as e:
         print(f"Telegram send error: {e}")
