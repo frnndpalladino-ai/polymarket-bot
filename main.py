@@ -1,8 +1,8 @@
 import requests
 import time
 
-TOKEN = "METTI_TOKEN"
-CHAT_ID = "METTI_CHAT_ID"
+TOKEN ="8741430524:AAEDYAOHXZSguLE-2grc3QBsn8tRZjD3bG"s
+CHAT_ID = "8434401391"
 
 def send(msg):
     requests.post(
@@ -10,9 +10,8 @@ def send(msg):
         json={"chat_id": CHAT_ID, "text": msg}
     )
 
-# TEST IMMEDIATO
-send("🟢 BOT ONLINE - TEST OK")
+send("🟢 TEST 1 - BOT ATTIVO")
 
 while True:
-    print("bot running...")
-    time.sleep(60)
+    send("🟡 TEST LOOP - BOT VIVO")
+    time.sleep(30)
