@@ -6,9 +6,9 @@ import sys
 # Configurazione Ambiente
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-THRESHOLD = float(os.getenv("THRESHOLD", 10)) # Mantengo 10 per il test, modificalo su Render quando vuoi
-MIN_MARKET_VOL = 1000 # Filtro: monitora solo mercati con volume totale > 1000$
-CHECK_INTERVAL = 35 
+THRESHOLD = float(os.getenv("THRESHOLD", 10)) 
+MIN_MARKET_VOL = 1000 
+CHECK_INTERVAL = 30 
 
 MARKET_DATA = {}
 
@@ -20,26 +20,34 @@ def send_msg(text):
         pass
 
 def monitor():
-    print(f"--- SCANNER AVVIATO (Filtro Mercati: >${MIN_MARKET_VOL}) ---")
-    send_msg(f"🚀 *Bot Online*\nFiltro mercati attivi: >${MIN_MARKET_VOL}\nSoglia alert: ${THRESHOLD}")
+    # Il flush=True serve per vedere i log subito su Render
+    print("--- INIZIALIZZAZIONE SCANNER V4 ---", flush=True)
+    send_msg("🚀 *Bot Online: Fase di acquisizione dati...*")
+    
+    # User-Agent per evitare blocchi dall'API
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
     
     while True:
         try:
-            # Chiamata all'API dei mercati
-            response = requests.get("https://clob.polymarket.com/markets", timeout=30)
+            print(f"Richiesta dati a Polymarket... ({time.strftime('%H:%M:%S')})", flush=True)
+            response = requests.get("https://clob.polymarket.com/markets", headers=headers, timeout=30)
+            
             if response.status_code != 200:
-                print(f"Errore API: {response.status_code}")
+                print(f"Errore API: {response.status_code}", flush=True)
                 time.sleep(60)
                 continue
                 
             markets = response.json()
-            if not isinstance(markets, list): continue
+            total_raw = len(markets)
+            print(f"Dati ricevuti. Mercati totali nell'API: {total_raw}", flush=True)
 
             processed_count = 0
             for m in markets:
                 vol = float(m.get('volume', 0))
                 
-                # Applichiamo il filtro richiesto
+                # Filtro volume minimo
                 if vol < MIN_MARKET_VOL:
                     continue
                 
@@ -48,7 +56,6 @@ def monitor():
                 
                 processed_count += 1
                 
-                # Se abbiamo già questo mercato in memoria, calcoliamo la differenza
                 if m_id in MARKET_DATA:
                     diff = vol - MARKET_DATA[m_id]
                     
@@ -57,28 +64,21 @@ def monitor():
                         slug = m.get('market_slug', '')
                         link = f"https://polymarket.com/event/{slug}"
                         
-                        # Formato richiesto
-                        msg = (
-                            f"Link {title}\n"
-                            f"{diff:,.0f}\n"
-                            f"Yes\n" # Nota: Indica un ingresso, l'esito specifico richiede analisi trades
-                            f"{link}"
-                        )
+                        msg = f"Link {title}\n{diff:,.0f}\nYes\n{link}"
                         send_msg(msg)
-                        print(f"Alert inviato per {title} (+{diff})")
+                        print(f"!!! ALERT INVIATO: {title} (+{diff})", flush=True)
                 
-                # Aggiorniamo sempre il volume attuale
                 MARKET_DATA[m_id] = vol
 
-            print(f"Scansione completata. Mercati rilevanti monitorati: {processed_count}")
+            print(f"Scansione completata. Monitorando {processed_count} mercati attivi.", flush=True)
             
         except Exception as e:
-            print(f"Errore ciclo: {e}")
+            print(f"ERRORE NEL CICLO: {e}", flush=True)
             
         time.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
     if not TELEGRAM_TOKEN or not CHAT_ID:
-        print("Mancano configurazioni!")
+        print("ERRORE: Variabili Ambiente mancanti!", flush=True)
         sys.exit(1)
     monitor()
