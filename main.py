@@ -6,7 +6,7 @@ import re
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-VOLUME_THRESHOLD = 5000
+VOLUME_THRESHOLD = 1000
 
 seen_volume = {}
 seen_price = {}
