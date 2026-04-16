@@ -1,11 +1,12 @@
 import os
 import requests
 import time
+import re
 
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-VOLUME_THRESHOLD = 5000  # modifica se vuoi
+VOLUME_THRESHOLD = 5000
 
 seen_volume = {}
 seen_price = {}
@@ -26,7 +27,7 @@ def get_markets():
     except:
         return []
 
-# estrai prezzo robusto
+# prezzo robusto
 def extract_price(m):
     try:
         if "outcomePrices" in m and m["outcomePrices"]:
@@ -39,7 +40,25 @@ def extract_price(m):
         pass
     return 0
 
-send("🟢 WHALE BOT CON DIREZIONE ATTIVO")
+# crea slug fallback
+def slugify(text):
+    text = text.lower()
+    text = re.sub(r'[^a-z0-9 ]', '', text)
+    text = text.replace(" ", "-")
+    return text[:80]
+
+# link mercato
+def get_market_url(m):
+    slug = m.get("slug")
+
+    if slug:
+        return f"https://polymarket.com/market/{slug}"
+
+    # fallback
+    name = m.get("question", "")
+    return f"https://polymarket.com/market/{slugify(name)}"
+
+send("🟢 WHALE BOT COMPLETO ATTIVO")
 
 while True:
     try:
@@ -61,7 +80,6 @@ while True:
             if mid is None or price == 0:
                 continue
 
-            # inizializzazione
             if mid not in seen_volume:
                 seen_volume[mid] = volume
                 seen_price[mid] = price
@@ -73,7 +91,6 @@ while True:
             delta_volume = volume - old_volume
             delta_price = price - old_price
 
-            # 🐋 whale detection
             if delta_volume >= VOLUME_THRESHOLD:
 
                 if delta_price > 0:
@@ -83,6 +100,8 @@ while True:
                 else:
                     side = "⚪ NEUTRAL"
 
+                url = get_market_url(m)
+
                 send(f"""🐋 WHALE MONEY + DIRECTION
 
 📊 {name}
@@ -91,6 +110,9 @@ while True:
 📈 Price: {round(old_price,3)} → {round(price,3)}
 
 🎯 Side: {side}
+
+🔗 Link:
+{url}
 """)
 
             seen_volume[mid] = volume
