@@ -3,13 +3,16 @@ import requests
 import time
 import re
 
+# =========================
+# CONFIG
+# =========================
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-WHALE_THRESHOLD = 1000  # cambia dopo test
+WHALE_THRESHOLD = 1000  # 🔥 cambia dopo test
 
-seen_trades = set()
 market_map = {}
+last_timestamp = 0
 
 # =========================
 # TELEGRAM
@@ -49,7 +52,7 @@ def get_markets():
         return []
 
 # =========================
-# LINK
+# LINK UTILS
 # =========================
 def slugify(text):
     text = text.lower()
@@ -66,7 +69,7 @@ def get_market_url(m):
     return f"https://polymarket.com/market/{slugify(name)}"
 
 # =========================
-# LOAD MARKETS MAP
+# MARKET MAP
 # =========================
 def update_market_map():
     global market_map
@@ -74,26 +77,24 @@ def update_market_map():
 
     for m in markets:
         mid = m.get("id")
-        name = m.get("question", "Unknown")
-        url = get_market_url(m)
+        if not mid:
+            continue
 
-        if mid:
-            market_map[mid] = {
-                "name": name,
-                "url": url
-            }
+        market_map[mid] = {
+            "name": m.get("question", "Unknown"),
+            "url": get_market_url(m)
+        }
 
     print(f"Markets mapped: {len(market_map)}")
 
 # =========================
 # START
 # =========================
-send("🟢 WHALE BOT PRO ATTIVO (TRADES + LINK)")
-
+send("🟢 WHALE BOT PRO LIVE (REAL TRADES + LINK)")
 update_market_map()
 
 # =========================
-# LOOP
+# LOOP PRINCIPALE
 # =========================
 while True:
     try:
@@ -102,11 +103,16 @@ while True:
         print(f"Trades fetched: {len(trades)}")
 
         for t in trades:
-            tid = t.get("id")
+            ts = t.get("timestamp") or 0
 
-            if tid in seen_trades:
+            try:
+                ts = int(ts)
+            except:
                 continue
-            seen_trades.add(tid)
+
+            # 🔥 SOLO TRADE NUOVI
+            if ts <= last_timestamp:
+                continue
 
             size = t.get("size") or t.get("amount") or 0
             side = t.get("side", "UNKNOWN")
@@ -119,7 +125,6 @@ while True:
 
             if size >= WHALE_THRESHOLD:
 
-                # direzione reale
                 if side.lower() == "buy":
                     direction = "🟢 YES (buy)"
                 elif side.lower() == "sell":
@@ -127,7 +132,6 @@ while True:
                 else:
                     direction = "⚪ UNKNOWN"
 
-                # nome + link
                 market_info = market_map.get(market_id, {})
                 name = market_info.get("name", "Unknown Market")
                 url = market_info.get("url", "")
@@ -142,7 +146,11 @@ while True:
 🔗 {url}
 """)
 
-        # aggiorna mercati ogni tanto
+            # aggiorna timestamp
+            if ts > last_timestamp:
+                last_timestamp = ts
+
+        # aggiorna markets ogni 5 minuti
         if int(time.time()) % 300 < 5:
             update_market_map()
 
