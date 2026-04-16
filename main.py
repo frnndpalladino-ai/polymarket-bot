@@ -5,9 +5,10 @@ import time
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-VOLUME_THRESHOLD = 1000  # soldi entrati (modifica dopo test)
+VOLUME_THRESHOLD = 5000  # modifica se vuoi
 
 seen_volume = {}
+seen_price = {}
 
 def send(msg):
     try:
@@ -25,7 +26,20 @@ def get_markets():
     except:
         return []
 
-send("🟢 BOT WHALE VOLUME ATTIVO")
+# estrai prezzo robusto
+def extract_price(m):
+    try:
+        if "outcomePrices" in m and m["outcomePrices"]:
+            return float(m["outcomePrices"][0])
+        if m.get("lastTradePrice"):
+            return float(m["lastTradePrice"])
+        if m.get("price"):
+            return float(m["price"])
+    except:
+        pass
+    return 0
+
+send("🟢 WHALE BOT CON DIREZIONE ATTIVO")
 
 while True:
     try:
@@ -36,30 +50,51 @@ while True:
             name = m.get("question", "Unknown")
 
             volume = m.get("volume24hr") or 0
+            price = extract_price(m)
 
             try:
                 volume = float(volume)
+                price = float(price)
             except:
                 continue
 
+            if mid is None or price == 0:
+                continue
+
+            # inizializzazione
             if mid not in seen_volume:
                 seen_volume[mid] = volume
+                seen_price[mid] = price
                 continue
 
             old_volume = seen_volume[mid]
-            delta = volume - old_volume
+            old_price = seen_price[mid]
 
-            # 🐋 QUI RILEVIAMO I SOLDI VERI
-            if delta >= VOLUME_THRESHOLD:
-                send(f"""🐋 WHALE MONEY DETECTED
+            delta_volume = volume - old_volume
+            delta_price = price - old_price
+
+            # 🐋 whale detection
+            if delta_volume >= VOLUME_THRESHOLD:
+
+                if delta_price > 0:
+                    side = "🟢 YES (bullish)"
+                elif delta_price < 0:
+                    side = "🔴 NO (bearish)"
+                else:
+                    side = "⚪ NEUTRAL"
+
+                send(f"""🐋 WHALE MONEY + DIRECTION
 
 📊 {name}
 
-💰 New money: +${round(delta,2)}
-📈 24h Volume: ${round(volume,2)}
+💰 Money In: +${round(delta_volume,2)}
+📈 Price: {round(old_price,3)} → {round(price,3)}
+
+🎯 Side: {side}
 """)
 
             seen_volume[mid] = volume
+            seen_price[mid] = price
 
         time.sleep(15)
 
