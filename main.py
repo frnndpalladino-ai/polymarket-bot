@@ -1,161 +1,64 @@
-import os
 import requests
 import time
-import re
+import os
 
-# =========================
-# CONFIG
-# =========================
-TOKEN = os.getenv("TOKEN")
+# Configurazione tramite variabili d'ambiente (per sicurezza su Render)
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
+THRESHOLD = float(os.getenv("THRESHOLD", 50000))  # Default 50k se non specificato
+CHECK_INTERVAL = 30  # Secondi tra i controlli
 
-WHALE_THRESHOLD = 1000  # 🔥 cambia dopo test
+MARKET_DATA = {}
 
-market_map = {}
-last_timestamp = 0
-
-# =========================
-# TELEGRAM
-# =========================
-def send(msg):
+def send_telegram_msg(text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "Markdown"}
     try:
-        print("SEND:", msg)
-        requests.post(
-            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            json={"chat_id": CHAT_ID, "text": msg},
-            timeout=10
-        )
+        requests.post(url, json=payload)
     except Exception as e:
-        print("Telegram error:", e)
-
-# =========================
-# API
-# =========================
-def get_trades():
-    try:
-        return requests.get(
-            "https://data-api.polymarket.com/trades",
-            timeout=10
-        ).json()
-    except Exception as e:
-        print("Trades API error:", e)
-        return []
+        print(f"Errore invio Telegram: {e}")
 
 def get_markets():
+    # API di Polymarket per i mercati attivi
+    url = "https://clob.polymarket.com/markets"
     try:
-        return requests.get(
-            "https://gamma-api.polymarket.com/markets",
-            timeout=10
-        ).json()
-    except Exception as e:
-        print("Markets API error:", e)
+        response = requests.get(url)
+        if response.status_code == 200:
+            return response.json()
+    except:
         return []
+    return []
 
-# =========================
-# LINK UTILS
-# =========================
-def slugify(text):
-    text = text.lower()
-    text = re.sub(r'[^a-z0-9 ]', '', text)
-    text = text.replace(" ", "-")
-    return text[:80]
+def monitor():
+    print("Bot avviato e in ascolto...")
+    while True:
+        markets = get_markets()
+        
+        for market in markets:
+            m_id = market.get('condition_id')
+            if not m_id: continue
+            
+            # Volume attuale
+            current_volume = float(market.get('volume', 0))
+            title = market.get('question', 'Mercato senza titolo')
+            slug = market.get('market_slug', '')
+            
+            # Se è la prima volta che vediamo il mercato, lo salviamo e basta
+            if m_id in MARKET_DATA:
+                prev_volume = MARKET_DATA[m_id]
+                diff = current_volume - prev_volume
+                
+                if diff >= THRESHOLD:
+                    # Costruzione link e messaggio
+                    link = f"https://polymarket.com/event/{slug}"
+                    # Nota: Il lato (Yes/No) non è presente nel volume aggregato.
+                    # Per semplicità indichiamo che c'è stato un forte ingresso.
+                    msg = f"Link {title}\n[{link}]({link})\n\n💰 *Ingresso:* ${diff:,.2f}\n🎯 *Esito:* Rilevato movimento"
+                    send_telegram_msg(msg)
+            
+            MARKET_DATA[m_id] = current_volume
+            
+        time.sleep(CHECK_INTERVAL)
 
-def get_market_url(m):
-    slug = m.get("slug")
-    if slug:
-        return f"https://polymarket.com/market/{slug}"
-
-    name = m.get("question", "")
-    return f"https://polymarket.com/market/{slugify(name)}"
-
-# =========================
-# MARKET MAP
-# =========================
-def update_market_map():
-    global market_map
-    markets = get_markets()
-
-    for m in markets:
-        mid = m.get("id")
-        if not mid:
-            continue
-
-        market_map[mid] = {
-            "name": m.get("question", "Unknown"),
-            "url": get_market_url(m)
-        }
-
-    print(f"Markets mapped: {len(market_map)}")
-
-# =========================
-# START
-# =========================
-send("🟢 WHALE BOT PRO LIVE (REAL TRADES + LINK)")
-update_market_map()
-
-# =========================
-# LOOP PRINCIPALE
-# =========================
-while True:
-    try:
-        trades = get_trades()
-
-        print(f"Trades fetched: {len(trades)}")
-
-        for t in trades:
-            ts = t.get("timestamp") or 0
-
-            try:
-                ts = int(ts)
-            except:
-                continue
-
-            # 🔥 SOLO TRADE NUOVI
-            if ts <= last_timestamp:
-                continue
-
-            size = t.get("size") or t.get("amount") or 0
-            side = t.get("side", "UNKNOWN")
-            market_id = t.get("market") or t.get("conditionId")
-
-            try:
-                size = float(size)
-            except:
-                continue
-
-            if size >= WHALE_THRESHOLD:
-
-                if side.lower() == "buy":
-                    direction = "🟢 YES (buy)"
-                elif side.lower() == "sell":
-                    direction = "🔴 NO (sell)"
-                else:
-                    direction = "⚪ UNKNOWN"
-
-                market_info = market_map.get(market_id, {})
-                name = market_info.get("name", "Unknown Market")
-                url = market_info.get("url", "")
-
-                send(f"""🐋 REAL WHALE TRADE
-
-📊 {name}
-
-💰 Size: ${round(size,2)}
-🎯 Side: {direction}
-
-🔗 {url}
-""")
-
-            # aggiorna timestamp
-            if ts > last_timestamp:
-                last_timestamp = ts
-
-        # aggiorna markets ogni 5 minuti
-        if int(time.time()) % 300 < 5:
-            update_market_map()
-
-        time.sleep(5)
-
-    except Exception as e:
-        send(f"❌ ERROR: {e}")
-        time.sleep(10)
+if __name__ == "__main__":
+    monitor()
