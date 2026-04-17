@@ -4,84 +4,94 @@ import os
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-CHECK_INTERVAL = 3600 # 1 ora esatta
+CHECK_INTERVAL = 3600 # 1 ora
 
-MARKET_DATA = {}
+# Memoria volumi
+VOLUMES_1H = {}
+VOLUMES_3H = {}
+ciclo_count = 0
 
 def send_msg(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        # Usiamo MarkdownV2 o lasciamo semplice per evitare errori con caratteri speciali
         requests.post(url, json={"chat_id": CHAT_ID, "text": text, "disable_web_page_preview": True}, timeout=15)
-    except Exception as e:
-        print(f"Errore Telegram: {e}")
+    except:
+        pass
 
-def get_gamma_markets():
+def get_data():
     headers = {"User-Agent": "Mozilla/5.0"}
-    # Recuperiamo un numero alto di mercati per essere sicuri di coprire tutto
     url = "https://gamma-api.polymarket.com/markets?active=true&limit=1000"
     try:
         r = requests.get(url, headers=headers, timeout=30)
-        if r.status_code == 200:
-            return r.json()
+        return r.json() if r.status_code == 200 else []
     except:
-        pass
-    return []
+        return []
 
 def monitor():
-    print("--- MONITORAGGIO ORARIO AVVIATO (TOP 50) ---", flush=True)
-    send_msg("📊 Report Orario Attivo: riceverai la lista dei 50 mercati più movimentati ogni ora.")
+    global ciclo_count
+    print("--- MONITORAGGIO 1H/3H AVVIATO ---", flush=True)
+    send_msg("📊 Bot configurato:\n- Report Orario (Top 30)\n- Report 3 Ore (Top 15)")
     
     while True:
-        markets = get_gamma_markets()
+        markets = get_data()
         current_time = time.strftime('%H:%M')
         
-        if not markets:
-            print(f"[{current_time}] Errore recupero dati. Riprovo al prossimo ciclo.", flush=True)
-        else:
-            movers = []
-            
+        if markets:
+            movers_1h = []
+            movers_3h = []
+
             for m in markets:
                 m_id = m.get('conditionId')
                 vol = float(m.get('volume', 0))
                 title = m.get('question', 'Unknown')
                 slug = m.get('slug', '')
-                
-                if m_id in MARKET_DATA:
-                    diff = vol - MARKET_DATA[m_id]
-                    if diff > 0:
-                        movers.append({
-                            'title': title,
-                            'diff': diff,
-                            'link': f"https://polymarket.com/event/{slug}"
-                        })
-                
-                # Aggiorna lo storico
-                MARKET_DATA[m_id] = vol
+                link = f"https://polymarket.com/event/{slug}"
 
-            # Se abbiamo dati precedenti, inviamo la classifica
-            if movers:
-                # Ordina per differenza di volume decrescente
-                movers.sort(key=lambda x: x['diff'], reverse=True)
-                top_50 = movers[:50]
+                # Logica 1 Ora
+                if m_id in VOLUMES_1H:
+                    diff = vol - VOLUMES_1H[m_id]
+                    if diff > 0:
+                        movers_1h.append({'title': title, 'diff': diff, 'link': link})
                 
-                report = f"🏆 TOP 50 MOVEMENTS (Ultima ora - {current_time})\n\n"
-                for i, m in enumerate(top_50, 1):
-                    line = f"{i}. {m['title']}\n💰 +${m['diff']:,.0f}\n🔗 {m['link']}\n\n"
-                    
-                    # Telegram ha un limite di 4096 caratteri per messaggio
-                    if len(report) + len(line) > 4000:
+                # Logica 3 Ore
+                if m_id in VOLUMES_3H:
+                    diff_3h = vol - VOLUMES_3H[m_id]
+                    if diff_3h > 0:
+                        movers_3h.append({'title': title, 'diff': diff_3h, 'link': link})
+
+                # Aggiorna memoria oraria ad ogni ciclo
+                VOLUMES_1H[m_id] = vol
+                # Inizializza memoria 3h se vuota
+                if m_id not in VOLUMES_3H:
+                    VOLUMES_3H[m_id] = vol
+
+            # REPORT ORARIO (Top 30)
+            if movers_1h:
+                movers_1h.sort(key=lambda x: x['diff'], reverse=True)
+                report = f"⏱️ *TOP 30 - ULTIMA ORA* ({current_time})\n\n"
+                for i, m in enumerate(movers_1h[:30], 1):
+                    report += f"{i}. {m['title']}\n💰 +${m['diff']:,.0f}\n🔗 {m['link']}\n\n"
+                    if len(report) > 3800:
                         send_msg(report)
                         report = ""
-                    report += line
-                
-                if report:
-                    send_msg(report)
-                print(f"[{current_time}] Report inviato.", flush=True)
-            else:
-                print(f"[{current_time}] Primo ciclo completato. Dati memorizzati.", flush=True)
+                send_msg(report)
 
-        # Attendi 1 ora
+            # OGNI 3 CICLI: REPORT 3 ORE (Top 15)
+            ciclo_count += 1
+            if ciclo_count >= 3:
+                if movers_3h:
+                    movers_3h.sort(key=lambda x: x['diff'], reverse=True)
+                    report_3h = f"🏆 *TOP 15 - ULTIME 3 ORE* ({current_time})\n\n"
+                    for i, m in enumerate(movers_3h[:15], 1):
+                        report_3h += f"{i}. {m['title']}\n💰 +${m['diff']:,.0f}\n🔗 {m['link']}\n\n"
+                    send_msg(report_3h)
+                
+                # Resetta memoria 3h e contatore
+                VOLUMES_3H = VOLUMES_1H.copy()
+                ciclo_count = 0
+            
+            print(f"[{current_time}] Ciclo {ciclo_count} completato.", flush=True)
+
         time.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
